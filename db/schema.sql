@@ -1,9 +1,9 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
-    description TEXT,
+    description TEXT NOT NULL default '',
     due_at TIMESTAMP NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'completed')),
@@ -11,7 +11,7 @@ CREATE TABLE tasks (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE reminder_rules (
+CREATE TABLE IF NOT EXISTS reminder_rules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -52,7 +52,7 @@ CREATE TABLE reminder_rules (
     )
 );
 
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     event_type TEXT NOT NULL
@@ -76,17 +76,17 @@ CREATE TABLE audit_logs (
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_reminder_rules_task_id
+CREATE INDEX IF NOT EXISTS idx_reminder_rules_task_id
     ON reminder_rules(task_id);
 
-CREATE INDEX idx_reminder_rules_active
+CREATE INDEX IF NOT EXISTS idx_reminder_rules_active
     ON reminder_rules(is_active);
 
-CREATE INDEX idx_audit_logs_rule_id
+CREATE INDEX IF NOT EXISTS idx_audit_logs_rule_id
     ON audit_logs(rule_id);
 
-CREATE INDEX idx_audit_logs_task_id
+CREATE INDEX IF NOT EXISTS idx_audit_logs_task_id
     ON audit_logs(task_id);
 
-CREATE INDEX idx_audit_logs_created_at
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
     ON audit_logs(created_at);
