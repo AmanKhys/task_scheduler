@@ -39,7 +39,6 @@ func newRouter(h Handler) http.Handler {
 
 	mux.HandleFunc("GET /audit-logs", h.GetAllAuditLogs)
 	mux.HandleFunc("GET /audit-logs/{id}", h.GetAuditLog)
-	mux.HandleFunc("GET /audit-trail", h.GetAllAuditLogs)
 
 	return enableCORS(mux)
 }
