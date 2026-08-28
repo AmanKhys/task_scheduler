@@ -71,6 +71,10 @@ h3 { font-size: 1rem; }
   box-shadow: var(--shadow);
 }
 
+#taskForm {
+  margin-bottom: 1.75rem;
+}
+
 .form label {
   display: flex;
   flex-direction: column;
@@ -149,6 +153,8 @@ button.danger {
   padding: 0 0.35rem;
   font-size: 0.95rem;
 }
+
+.rule-form {
   border-top: 1px dashed var(--line);
   padding-top: 0.75rem;
   margin-top: 0.75rem;
@@ -156,13 +162,44 @@ button.danger {
 
 .days {
   display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
-  gap: 0.4rem 0.7rem;
+  align-items: center;
+  gap: 0.5rem 0.6rem;
   font-size: 0.85rem;
-  margin: 0.35rem 0 0.65rem;
+  margin: 0.5rem 0 0.75rem;
 }
 
-.days label { display: flex; flex-direction: row; align-items: center; gap: 0.3rem; margin: 0; color: var(--ink); }
+.days label,
+.form .days label,
+.rule-form .days label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.days label:hover,
+.form .days label:hover,
+.rule-form .days label:hover {
+  border-color: var(--accent);
+  background: #fff;
+}
+
+.days label input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
 
 .audit .card { font-size: 0.92rem; }
 .audit code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; color: var(--muted); }
@@ -178,6 +215,47 @@ button.danger {
 .banner.hidden { display: none; }
 
 .toggle { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; }
+
+.task-audit-section {
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.task-audit-section.hidden {
+  display: none;
+}
+
+.task-audit-section h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.task-audit-item {
+  padding: 0.45rem 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.task-audit-item:last-child {
+  border-bottom: none;
+}
+
+.task-audit-item code {
+  display: block;
+  margin-top: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+  word-break: break-all;
+}
 
 @media (max-width: 900px) {
   .layout, .top { padding-left: 1rem; padding-right: 1rem; }

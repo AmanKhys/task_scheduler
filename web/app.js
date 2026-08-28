@@ -96,6 +96,40 @@ function bitsFromForm(form, name) {
   );
 }
 
+const openTaskAuditIds = new Set();
+const taskAuditCache = new Map();
+
+async function fetchTaskAuditHtml(taskId) {
+  let taskLogs = [];
+  try {
+    taskLogs = await api(`/audit-logs?task_id=${taskId}`);
+  } catch {
+    taskLogs = [];
+  }
+  if (!taskLogs || !taskLogs.length) {
+    taskLogs = allAuditLogs.filter(
+      (l) => l.task_id === taskId || (l.task_id && l.task_id.Bytes === taskId)
+    );
+  }
+  if (!taskLogs || !taskLogs.length) {
+    return `<h4>Task Audit Logs</h4><p class="muted">No audit logs found for this task.</p>`;
+  }
+  const itemsHtml = taskLogs
+    .map((log) => {
+      const details = decodeDetails(log.details);
+      return `
+      <div class="task-audit-item">
+        <div class="task-title">
+          <strong>${escapeHtml(log.event_type)}</strong>
+          <span class="muted">${formatWhen(log.created_at)}</span>
+        </div>
+        ${details ? `<code>${escapeHtml(details)}</code>` : ""}
+      </div>`;
+    })
+    .join("");
+  return `<h4>Task Audit Logs (${taskLogs.length})</h4>${itemsHtml}`;
+}
+
 function renderTasks(tasks, rules) {
   const byTask = {};
   for (const rule of rules) {
@@ -130,6 +164,20 @@ function renderTasks(tasks, rules) {
         )
         .join("");
 
+      const isOpen = openTaskAuditIds.has(task.id);
+      const cachedHtml = taskAuditCache.get(task.id) || "";
+
+      // Refresh open audit logs in background
+      if (isOpen) {
+        fetchTaskAuditHtml(task.id).then((html) => {
+          taskAuditCache.set(task.id, html);
+          const el = document.getElementById(`task-audit-${task.id}`);
+          if (el && !el.classList.contains("hidden")) {
+            el.innerHTML = html;
+          }
+        });
+      }
+
       return `
       <article class="card" data-task-id="${task.id}">
         <div class="task-title">
@@ -139,6 +187,7 @@ function renderTasks(tasks, rules) {
         <p class="muted">${escapeHtml(task.description || "No description")}</p>
         <p>Due ${formatWhen(task.due_at)}</p>
         <div class="actions">
+          <button type="button" class="ghost" data-audit-task="${task.id}">Audit logs</button>
           ${
             task.status === "completed"
               ? `<button type="button" class="ghost" data-undo="${task.id}">Mark undo</button>`
@@ -146,6 +195,7 @@ function renderTasks(tasks, rules) {
           }
           <button type="button" class="danger" data-delete-task="${task.id}">Delete task</button>
         </div>
+        <div id="task-audit-${task.id}" class="task-audit-section ${isOpen ? "" : "hidden"}">${isOpen ? cachedHtml : ""}</div>
         ${rulesHtml}
         <form class="rule-form" data-task="${task.id}">
           <h3>Add reminder rule</h3>
@@ -169,8 +219,10 @@ function renderTasks(tasks, rules) {
     .join("");
 }
 
+let allAuditLogs = [];
+
 function renderAudit(logs) {
-  if (!logs.length) {
+  if (!logs || !logs.length) {
     auditList.innerHTML = `<p class="muted">No audit events yet.</p>`;
     return;
   }
@@ -209,8 +261,9 @@ async function load() {
       api("/reminder-rules"),
       api("/audit-logs"),
     ]);
+    allAuditLogs = logs || [];
     renderTasks(tasks, rules);
-    renderAudit(logs);
+    renderAudit(allAuditLogs);
     statusLine.textContent = `Updated ${new Date().toLocaleTimeString()}`;
   } catch (err) {
     showError(err.message);
@@ -295,6 +348,22 @@ taskList.addEventListener("click", async (e) => {
         method: "PATCH",
         body: JSON.stringify({ is_active: next }),
       });
+    } else if (btn.dataset.auditTask) {
+      const taskId = btn.dataset.auditTask;
+      const container = document.getElementById(`task-audit-${taskId}`);
+      if (openTaskAuditIds.has(taskId)) {
+        openTaskAuditIds.delete(taskId);
+        if (container) container.classList.add("hidden");
+      } else {
+        openTaskAuditIds.add(taskId);
+        const html = await fetchTaskAuditHtml(taskId);
+        taskAuditCache.set(taskId, html);
+        if (container) {
+          container.innerHTML = html;
+          container.classList.remove("hidden");
+        }
+      }
+      return;
     } else {
       return;
     }
