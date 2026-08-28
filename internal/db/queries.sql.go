@@ -7,18 +7,33 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countTasks = `-- name: CountTasks :one
+SELECT COUNT(*) FROM tasks
+`
+
+func (q *Queries) CountTasks(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countTasks)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAuditLog = `-- name: CreateAuditLog :exec
-insert into audit_logs (
-	event_type,
-	rule_id,
-	task_id,
-	details
-) values (
-	$1, $2, $3, $4
+INSERT INTO audit_logs (
+    event_type,
+    rule_id,
+    task_id,
+    details
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4
 )
 `
 
@@ -39,16 +54,21 @@ func (q *Queries) CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) 
 	return err
 }
 
-const createReminderRule = `-- name: CreateReminderRule :exec
-insert into reminder_rules (
-	task_id,
-	name,
-	days,
-	trigger_type,
-	offset_minutes
-) values (
-	$1, $2, $3, $4, $5
+const createReminderRule = `-- name: CreateReminderRule :one
+INSERT INTO reminder_rules (
+    task_id,
+    name,
+    days,
+    trigger_type,
+    offset_minutes
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5
 )
+RETURNING id, task_id, name, days, trigger_type, offset_minutes, is_active, created_at, updated_at
 `
 
 type CreateReminderRuleParams struct {
@@ -59,43 +79,69 @@ type CreateReminderRuleParams struct {
 	OffsetMinutes int32       `json:"offset_minutes"`
 }
 
-func (q *Queries) CreateReminderRule(ctx context.Context, arg CreateReminderRuleParams) error {
-	_, err := q.db.Exec(ctx, createReminderRule,
+func (q *Queries) CreateReminderRule(ctx context.Context, arg CreateReminderRuleParams) (ReminderRule, error) {
+	row := q.db.QueryRow(ctx, createReminderRule,
 		arg.TaskID,
 		arg.Name,
 		arg.Days,
 		arg.TriggerType,
 		arg.OffsetMinutes,
 	)
-	return err
+	var i ReminderRule
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.Name,
+		&i.Days,
+		&i.TriggerType,
+		&i.OffsetMinutes,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
-const createTask = `-- name: CreateTask :exec
-insert into tasks (
-	title,
-	description,
-	due_at,
-	status
-) values (
-	$1, $2, $3, $4
+const createTask = `-- name: CreateTask :one
+INSERT INTO tasks (
+    title,
+    description,
+    due_at,
+    status
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4
 )
+RETURNING id, title, description, due_at, status, created_at, updated_at
 `
 
 type CreateTaskParams struct {
-	Title       string           `json:"title"`
-	Description pgtype.Text      `json:"description"`
-	DueAt       pgtype.Timestamp `json:"due_at"`
-	Status      string           `json:"status"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	DueAt       time.Time `json:"due_at"`
+	Status      string    `json:"status"`
 }
 
-func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) error {
-	_, err := q.db.Exec(ctx, createTask,
+func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
+	row := q.db.QueryRow(ctx, createTask,
 		arg.Title,
 		arg.Description,
 		arg.DueAt,
 		arg.Status,
 	)
-	return err
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Description,
+		&i.DueAt,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const deleteReminderRule = `-- name: DeleteReminderRule :exec
@@ -116,6 +162,77 @@ func (q *Queries) DeleteTask(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
+const getActiveReminderRules = `-- name: GetActiveReminderRules :many
+SELECT
+    r.id,
+    r.task_id,
+    r.name,
+    r.days,
+    r.trigger_type,
+    r.offset_minutes,
+    r.is_active,
+    r.created_at,
+    r.updated_at,
+    t.title AS task_title,
+    t.description AS task_description,
+    t.due_at,
+    t.status AS task_status
+FROM reminder_rules r
+INNER JOIN tasks t ON t.id = r.task_id
+WHERE r.is_active = TRUE
+  AND t.status = 'pending'
+`
+
+type GetActiveReminderRulesRow struct {
+	ID              pgtype.UUID `json:"id"`
+	TaskID          pgtype.UUID `json:"task_id"`
+	Name            string      `json:"name"`
+	Days            int32       `json:"days"`
+	TriggerType     string      `json:"trigger_type"`
+	OffsetMinutes   int32       `json:"offset_minutes"`
+	IsActive        bool        `json:"is_active"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+	TaskTitle       string      `json:"task_title"`
+	TaskDescription string      `json:"task_description"`
+	DueAt           time.Time   `json:"due_at"`
+	TaskStatus      string      `json:"task_status"`
+}
+
+func (q *Queries) GetActiveReminderRules(ctx context.Context) ([]GetActiveReminderRulesRow, error) {
+	rows, err := q.db.Query(ctx, getActiveReminderRules)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetActiveReminderRulesRow{}
+	for rows.Next() {
+		var i GetActiveReminderRulesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.Name,
+			&i.Days,
+			&i.TriggerType,
+			&i.OffsetMinutes,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TaskTitle,
+			&i.TaskDescription,
+			&i.DueAt,
+			&i.TaskStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAuditLog = `-- name: GetAuditLog :one
 SELECT id, event_type, rule_id, task_id, details, created_at FROM audit_logs WHERE id = $1
 `
@@ -134,12 +251,120 @@ func (q *Queries) GetAuditLog(ctx context.Context, id pgtype.UUID) (AuditLog, er
 	return i, err
 }
 
-const getAuditLogs = `-- name: GetAuditLogs :many
-SELECT id, event_type, rule_id, task_id, details, created_at FROM audit_logs WHERE task_id = $1
+const getReminderRule = `-- name: GetReminderRule :one
+SELECT id, task_id, name, days, trigger_type, offset_minutes, is_active, created_at, updated_at FROM reminder_rules WHERE id = $1
 `
 
-func (q *Queries) GetAuditLogs(ctx context.Context, taskID pgtype.UUID) ([]AuditLog, error) {
-	rows, err := q.db.Query(ctx, getAuditLogs, taskID)
+func (q *Queries) GetReminderRule(ctx context.Context, id pgtype.UUID) (ReminderRule, error) {
+	row := q.db.QueryRow(ctx, getReminderRule, id)
+	var i ReminderRule
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.Name,
+		&i.Days,
+		&i.TriggerType,
+		&i.OffsetMinutes,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTask = `-- name: GetTask :one
+SELECT id, title, description, due_at, status, created_at, updated_at FROM tasks WHERE id = $1
+`
+
+func (q *Queries) GetTask(ctx context.Context, id pgtype.UUID) (Task, error) {
+	row := q.db.QueryRow(ctx, getTask, id)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Description,
+		&i.DueAt,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTasks = `-- name: GetTasks :many
+SELECT id, title, description, due_at, status, created_at, updated_at
+FROM tasks
+WHERE
+    ($1::text IS NULL OR status = $1)
+    AND ($2::timestamp IS NULL OR due_at >= $2)
+    AND ($3::timestamp IS NULL OR due_at <= $3)
+ORDER BY due_at ASC
+`
+
+type GetTasksParams struct {
+	Status  pgtype.Text      `json:"status"`
+	DueFrom pgtype.Timestamp `json:"due_from"`
+	DueTo   pgtype.Timestamp `json:"due_to"`
+}
+
+func (q *Queries) GetTasks(ctx context.Context, arg GetTasksParams) ([]Task, error) {
+	rows, err := q.db.Query(ctx, getTasks, arg.Status, arg.DueFrom, arg.DueTo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Description,
+			&i.DueAt,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const hasReminderTriggeredSince = `-- name: HasReminderTriggeredSince :one
+SELECT EXISTS (
+    SELECT 1 FROM audit_logs
+    WHERE rule_id = $1
+      AND event_type = 'reminder_triggered'
+      AND created_at >= $2
+)
+`
+
+type HasReminderTriggeredSinceParams struct {
+	RuleID pgtype.UUID `json:"rule_id"`
+	Since  time.Time   `json:"since"`
+}
+
+func (q *Queries) HasReminderTriggeredSince(ctx context.Context, arg HasReminderTriggeredSinceParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasReminderTriggeredSince, arg.RuleID, arg.Since)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const listAuditLogs = `-- name: ListAuditLogs :many
+SELECT id, event_type, rule_id, task_id, details, created_at
+FROM audit_logs
+WHERE ($1::uuid IS NULL OR task_id = $1)
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListAuditLogs(ctx context.Context, taskID pgtype.UUID) ([]AuditLog, error) {
+	rows, err := q.db.Query(ctx, listAuditLogs, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -165,12 +390,15 @@ func (q *Queries) GetAuditLogs(ctx context.Context, taskID pgtype.UUID) ([]Audit
 	return items, nil
 }
 
-const getReminderRules = `-- name: GetReminderRules :many
-SELECT id, task_id, name, days, trigger_type, offset_minutes, is_active, created_at, updated_at FROM reminder_rules WHERE task_id = $1
+const listReminderRules = `-- name: ListReminderRules :many
+SELECT id, task_id, name, days, trigger_type, offset_minutes, is_active, created_at, updated_at
+FROM reminder_rules
+WHERE ($1::uuid IS NULL OR task_id = $1)
+ORDER BY created_at ASC
 `
 
-func (q *Queries) GetReminderRules(ctx context.Context, taskID pgtype.UUID) ([]ReminderRule, error) {
-	rows, err := q.db.Query(ctx, getReminderRules, taskID)
+func (q *Queries) ListReminderRules(ctx context.Context, taskID pgtype.UUID) ([]ReminderRule, error) {
+	rows, err := q.db.Query(ctx, listReminderRules, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -199,12 +427,111 @@ func (q *Queries) GetReminderRules(ctx context.Context, taskID pgtype.UUID) ([]R
 	return items, nil
 }
 
-const getTask = `-- name: GetTask :one
-SELECT id, title, description, due_at, status, created_at, updated_at FROM tasks WHERE id = $1
+const setReminderRuleActive = `-- name: SetReminderRuleActive :one
+UPDATE reminder_rules
+SET
+    is_active = $1,
+    updated_at = NOW()
+WHERE id = $2
+RETURNING id, task_id, name, days, trigger_type, offset_minutes, is_active, created_at, updated_at
 `
 
-func (q *Queries) GetTask(ctx context.Context, id pgtype.UUID) (Task, error) {
-	row := q.db.QueryRow(ctx, getTask, id)
+type SetReminderRuleActiveParams struct {
+	IsActive bool        `json:"is_active"`
+	ID       pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) SetReminderRuleActive(ctx context.Context, arg SetReminderRuleActiveParams) (ReminderRule, error) {
+	row := q.db.QueryRow(ctx, setReminderRuleActive, arg.IsActive, arg.ID)
+	var i ReminderRule
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.Name,
+		&i.Days,
+		&i.TriggerType,
+		&i.OffsetMinutes,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateReminderRule = `-- name: UpdateReminderRule :one
+UPDATE reminder_rules
+SET
+    name = COALESCE($1, name),
+    days = COALESCE($2, days),
+    trigger_type = COALESCE($3, trigger_type),
+    offset_minutes = COALESCE($4, offset_minutes),
+    is_active = COALESCE($5, is_active),
+    updated_at = NOW()
+WHERE id = $6
+RETURNING id, task_id, name, days, trigger_type, offset_minutes, is_active, created_at, updated_at
+`
+
+type UpdateReminderRuleParams struct {
+	Name          pgtype.Text `json:"name"`
+	Days          pgtype.Int4 `json:"days"`
+	TriggerType   pgtype.Text `json:"trigger_type"`
+	OffsetMinutes pgtype.Int4 `json:"offset_minutes"`
+	IsActive      pgtype.Bool `json:"is_active"`
+	ID            pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateReminderRule(ctx context.Context, arg UpdateReminderRuleParams) (ReminderRule, error) {
+	row := q.db.QueryRow(ctx, updateReminderRule,
+		arg.Name,
+		arg.Days,
+		arg.TriggerType,
+		arg.OffsetMinutes,
+		arg.IsActive,
+		arg.ID,
+	)
+	var i ReminderRule
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.Name,
+		&i.Days,
+		&i.TriggerType,
+		&i.OffsetMinutes,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTask = `-- name: UpdateTask :one
+UPDATE tasks
+SET
+    title = COALESCE($1, title),
+    description = COALESCE($2, description),
+    due_at = COALESCE($3, due_at),
+    status = COALESCE($4, status),
+    updated_at = NOW()
+WHERE id = $5
+RETURNING id, title, description, due_at, status, created_at, updated_at
+`
+
+type UpdateTaskParams struct {
+	Title       pgtype.Text      `json:"title"`
+	Description pgtype.Text      `json:"description"`
+	DueAt       pgtype.Timestamp `json:"due_at"`
+	Status      pgtype.Text      `json:"status"`
+	ID          pgtype.UUID      `json:"id"`
+}
+
+func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error) {
+	row := q.db.QueryRow(ctx, updateTask,
+		arg.Title,
+		arg.Description,
+		arg.DueAt,
+		arg.Status,
+		arg.ID,
+	)
 	var i Task
 	err := row.Scan(
 		&i.ID,
@@ -216,111 +543,4 @@ func (q *Queries) GetTask(ctx context.Context, id pgtype.UUID) (Task, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const getTasks = `-- name: GetTasks :many
-SELECT id, title, description, due_at, status, created_at, updated_at
-FROM tasks
-WHERE
-($1::text IS NULL OR status = $1)
-    AND ($2::timestamp IS NULL OR due_at >= $2)
-    AND ($3::timestamp IS NULL OR due_at <= $3)
-ORDER BY due_at ASC
-`
-
-type GetTasksParams struct {
-	Column1 string           `json:"column_1"`
-	Column2 pgtype.Timestamp `json:"column_2"`
-	Column3 pgtype.Timestamp `json:"column_3"`
-}
-
-func (q *Queries) GetTasks(ctx context.Context, arg GetTasksParams) ([]Task, error) {
-	rows, err := q.db.Query(ctx, getTasks, arg.Column1, arg.Column2, arg.Column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Task{}
-	for rows.Next() {
-		var i Task
-		if err := rows.Scan(
-			&i.ID,
-			&i.Title,
-			&i.Description,
-			&i.DueAt,
-			&i.Status,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const updateReminderRule = `-- name: UpdateReminderRule :exec
-UPDATE reminder_rules
-SET
-    name = COALESCE($2, name),
-    days = COALESCE($3, days),
-    trigger_type = COALESCE($4, trigger_type),
-    offset_minutes = COALESCE($5, offset_minutes),
-    is_active = COALESCE($6, is_active),
-    updated_at = NOW()
-WHERE id = $1
-`
-
-type UpdateReminderRuleParams struct {
-	ID            pgtype.UUID `json:"id"`
-	Name          string      `json:"name"`
-	Days          int32       `json:"days"`
-	TriggerType   string      `json:"trigger_type"`
-	OffsetMinutes int32       `json:"offset_minutes"`
-	IsActive      bool        `json:"is_active"`
-}
-
-func (q *Queries) UpdateReminderRule(ctx context.Context, arg UpdateReminderRuleParams) error {
-	_, err := q.db.Exec(ctx, updateReminderRule,
-		arg.ID,
-		arg.Name,
-		arg.Days,
-		arg.TriggerType,
-		arg.OffsetMinutes,
-		arg.IsActive,
-	)
-	return err
-}
-
-const updateTask = `-- name: UpdateTask :exec
-UPDATE tasks
-SET
-    title = COALESCE($2, title),
-    description = COALESCE($3, description),
-    due_at = COALESCE($4, due_at),
-    status = COALESCE($5, status),
-    updated_at = NOW()
-WHERE id = $1
-`
-
-type UpdateTaskParams struct {
-	ID          pgtype.UUID      `json:"id"`
-	Title       string           `json:"title"`
-	Description pgtype.Text      `json:"description"`
-	DueAt       pgtype.Timestamp `json:"due_at"`
-	Status      string           `json:"status"`
-}
-
-func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
-	_, err := q.db.Exec(ctx, updateTask,
-		arg.ID,
-		arg.Title,
-		arg.Description,
-		arg.DueAt,
-		arg.Status,
-	)
-	return err
 }

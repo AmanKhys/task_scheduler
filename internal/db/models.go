@@ -5,36 +5,38 @@
 package db
 
 import (
+	"time"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type AuditLog struct {
-	ID        pgtype.UUID      `json:"id"`
-	EventType string           `json:"event_type"`
-	RuleID    pgtype.UUID      `json:"rule_id"`
-	TaskID    pgtype.UUID      `json:"task_id"`
-	Details   []byte           `json:"details"`
-	CreatedAt pgtype.Timestamp `json:"created_at"`
+	ID        pgtype.UUID `json:"id"`
+	EventType string      `json:"event_type"`
+	RuleID    pgtype.UUID `json:"rule_id"`
+	TaskID    pgtype.UUID `json:"task_id"`
+	Details   []byte      `json:"details"`
+	CreatedAt time.Time   `json:"created_at"`
 }
 
 type ReminderRule struct {
-	ID            pgtype.UUID      `json:"id"`
-	TaskID        pgtype.UUID      `json:"task_id"`
-	Name          string           `json:"name"`
-	Days          int32            `json:"days"`
-	TriggerType   string           `json:"trigger_type"`
-	OffsetMinutes int32            `json:"offset_minutes"`
-	IsActive      bool             `json:"is_active"`
-	CreatedAt     pgtype.Timestamp `json:"created_at"`
-	UpdatedAt     pgtype.Timestamp `json:"updated_at"`
+	ID            pgtype.UUID `json:"id"`
+	TaskID        pgtype.UUID `json:"task_id"`
+	Name          string      `json:"name"`
+	Days          int32       `json:"days"`
+	TriggerType   string      `json:"trigger_type"`
+	OffsetMinutes int32       `json:"offset_minutes"`
+	IsActive      bool        `json:"is_active"`
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
 }
 
 type Task struct {
-	ID          pgtype.UUID      `json:"id"`
-	Title       string           `json:"title"`
-	Description pgtype.Text      `json:"description"`
-	DueAt       pgtype.Timestamp `json:"due_at"`
-	Status      string           `json:"status"`
-	CreatedAt   pgtype.Timestamp `json:"created_at"`
-	UpdatedAt   pgtype.Timestamp `json:"updated_at"`
+	ID          pgtype.UUID `json:"id"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+	DueAt       time.Time   `json:"due_at"`
+	Status      string      `json:"status"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
 }
