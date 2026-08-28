@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reminder scheduler</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Reminder scheduler</h1>
+      <p class="muted">Tasks, rules, and audit trail. Reminders still print in the server console.</p>
+    </div>
+    <div class="top-actions">
+      <label class="toggle">
+        <input type="checkbox" id="autoRefresh" checked />
+        Auto-refresh
+      </label>
+      <button type="button" id="refreshBtn">Refresh</button>
+      <span id="statusLine" class="muted"></span>
+    </div>
+  </header>
+
+  <p id="banner" class="banner hidden"></p>
+
+  <main class="layout">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Tasks</h2>
+        <select id="statusFilter">
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
+
+      <form id="taskForm" class="card form">
+        <h3>New task</h3>
+        <label>Title <input name="title" required placeholder="Call the dentist" /></label>
+        <label>Description <input name="description" placeholder="Optional" /></label>
+        <div class="row">
+          <label>Due at <input name="due_at" type="datetime-local" required /></label>
+          <label>Status
+            <select name="status">
+              <option value="pending">pending</option>
+              <option value="completed">completed</option>
+            </select>
+          </label>
+        </div>
+        <fieldset class="rule-block">
+          <legend>Reminder rule</legend>
+          <label>Name <input name="rule_name" required placeholder="15m before" value="At due" /></label>
+          <div class="row">
+            <label>Trigger
+              <select name="rule_trigger_type">
+                <option value="at_due">at due</option>
+                <option value="before_due">before due</option>
+                <option value="after_due">after due</option>
+              </select>
+            </label>
+            <label>Offset minutes <input name="rule_offset_minutes" type="number" min="0" value="0" /></label>
+          </div>
+          <p class="muted">Leave all days unchecked for a one-time reminder.</p>
+          <div class="days">
+            <label><input type="checkbox" name="rule_days" value="1" /> Sun</label>
+            <label><input type="checkbox" name="rule_days" value="2" /> Mon</label>
+            <label><input type="checkbox" name="rule_days" value="4" /> Tue</label>
+            <label><input type="checkbox" name="rule_days" value="8" /> Wed</label>
+            <label><input type="checkbox" name="rule_days" value="16" /> Thu</label>
+            <label><input type="checkbox" name="rule_days" value="32" /> Fri</label>
+            <label><input type="checkbox" name="rule_days" value="64" /> Sat</label>
+          </div>
+        </fieldset>
+        <button type="submit">Create task &amp; reminder</button>
+      </form>
+
+      <div id="taskList" class="stack"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Audit log</h2>
+      </div>
+      <div id="auditList" class="stack audit"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
