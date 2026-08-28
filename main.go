@@ -54,7 +54,7 @@ func main() {
 	sched := &Scheduler{q: q, interval: 15 * time.Second}
 	go sched.Run(ctx)
 
-	addr := ":8080"
+	addr := ":8081"
 	if v := os.Getenv("PORT"); v != "" {
 		addr = ":" + v
 	}

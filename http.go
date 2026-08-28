@@ -8,10 +8,17 @@ import (
 func newRouter(h Handler) http.Handler {
 	mux := http.NewServeMux()
 
+	fileServer := http.FileServer(http.Dir("web"))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", fileServer))
+	mux.HandleFunc("GET /styles.css", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "web/styles.css")
+	})
+	mux.HandleFunc("GET /app.js", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "web/app.js")
+	})
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "web/index.html")
 	})
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web"))))
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -34,7 +41,20 @@ func newRouter(h Handler) http.Handler {
 	mux.HandleFunc("GET /audit-logs/{id}", h.GetAuditLog)
 	mux.HandleFunc("GET /audit-trail", h.GetAllAuditLogs)
 
-	return mux
+	return enableCORS(mux)
+}
+
+func enableCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func listenAndServe(addr string, handler http.Handler) error {
