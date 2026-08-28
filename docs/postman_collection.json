@@ -1,0 +1,322 @@
+{
+  "info": {
+    "name": "Task Reminder Scheduler",
+    "description": "Manual tests for the local reminder API. Set `baseUrl` (default http://localhost:8080). Create Task / Create Reminder Rule save `taskId` and `ruleId` for later requests.\n\n**days:** 0 = one-time; Sun=1 Mon=2 Tue=4 Wed=8 Thu=16 Fri=32 Sat=64 (127 = every day).\n**trigger_type:** at_due (offset 0), before_due, after_due.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "taskId", "value": "" },
+    { "key": "ruleId", "value": "" },
+    { "key": "auditLogId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "List tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["tasks"],
+              "query": [
+                { "key": "status", "value": "pending", "disabled": true },
+                { "key": "due_from", "value": "2026-08-28T00:00:00Z", "disabled": true },
+                { "key": "due_to", "value": "2026-08-29T00:00:00Z", "disabled": true }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const tasks = pm.response.json();",
+                  "  if (Array.isArray(tasks) && tasks.length && !pm.collectionVariables.get('taskId')) {",
+                  "    pm.collectionVariables.set('taskId', tasks[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create task",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman demo task\",\n  \"description\": \"Created from Postman\",\n  \"due_at\": \"{{$isoTimestamp}}\",\n  \"status\": \"pending\"\n}"
+            },
+            "url": "{{baseUrl}}/tasks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('taskId', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get task",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/tasks/{{taskId}}"
+          }
+        },
+        {
+          "name": "Update task",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman demo task (updated)\",\n  \"status\": \"pending\"\n}"
+            },
+            "url": "{{baseUrl}}/tasks/{{taskId}}"
+          }
+        },
+        {
+          "name": "Mark task completed",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"completed\"\n}"
+            },
+            "url": "{{baseUrl}}/tasks/{{taskId}}"
+          }
+        },
+        {
+          "name": "Delete task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/tasks/{{taskId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reminder rules",
+      "item": [
+        {
+          "name": "List reminder rules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reminder-rules",
+              "host": ["{{baseUrl}}"],
+              "path": ["reminder-rules"],
+              "query": [
+                { "key": "task_id", "value": "{{taskId}}", "disabled": true }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const rules = pm.response.json();",
+                  "  if (Array.isArray(rules) && rules.length && !pm.collectionVariables.get('ruleId')) {",
+                  "    pm.collectionVariables.set('ruleId', rules[0].id);",
+                  "    pm.collectionVariables.set('taskId', rules[0].task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create reminder rule (at due)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"At due\",\n  \"days\": 0,\n  \"trigger_type\": \"at_due\",\n  \"offset_minutes\": 0\n}"
+            },
+            "url": "{{baseUrl}}/tasks/{{taskId}}/reminder-rules"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('ruleId', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create reminder rule (15m before)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"15m before\",\n  \"days\": 0,\n  \"trigger_type\": \"before_due\",\n  \"offset_minutes\": 15\n}"
+            },
+            "url": "{{baseUrl}}/tasks/{{taskId}}/reminder-rules"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('ruleId', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get reminder rule",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/reminder-rules/{{ruleId}}"
+          }
+        },
+        {
+          "name": "Update reminder rule",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"15m before (updated)\",\n  \"offset_minutes\": 10\n}"
+            },
+            "url": "{{baseUrl}}/reminder-rules/{{ruleId}}"
+          }
+        },
+        {
+          "name": "Deactivate reminder rule",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}"
+            },
+            "url": "{{baseUrl}}/reminder-rules/{{ruleId}}/status"
+          }
+        },
+        {
+          "name": "Activate reminder rule",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": true\n}"
+            },
+            "url": "{{baseUrl}}/reminder-rules/{{ruleId}}/status"
+          }
+        },
+        {
+          "name": "Delete reminder rule",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/reminder-rules/{{ruleId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "List audit logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/audit-logs",
+              "host": ["{{baseUrl}}"],
+              "path": ["audit-logs"],
+              "query": [
+                { "key": "task_id", "value": "{{taskId}}", "disabled": true }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const logs = pm.response.json();",
+                  "  if (Array.isArray(logs) && logs.length) {",
+                  "    pm.collectionVariables.set('auditLogId', logs[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List audit trail (alias)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/audit-trail"
+          }
+        },
+        {
+          "name": "Get audit log",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/audit-logs/{{auditLogId}}"
+          }
+        }
+      ]
+    }
+  ]
+}

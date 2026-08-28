@@ -1,0 +1,564 @@
+openapi: 3.0.3
+info:
+  title: Task Reminder Scheduler API
+  version: 1.0.0
+  description: |
+    REST API for tasks, reminder rules, and audit logs.
+    The background scheduler prints matching reminders to the server console
+    and writes `reminder_triggered` audit rows.
+
+    **days bitmask:** `0` = one-time. Sunday=1, Monday=2, Tuesday=4, Wednesday=8,
+    Thursday=16, Friday=32, Saturday=64. Combine by adding (127 = every day).
+
+    **trigger_type:** `at_due` (offset must be 0), `before_due`, `after_due`.
+  contact:
+    name: local
+servers:
+  - url: http://localhost:8080
+    description: Local default
+
+tags:
+  - name: Health
+  - name: Tasks
+  - name: Reminder rules
+  - name: Audit
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      operationId: getHealth
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /tasks:
+    get:
+      tags: [Tasks]
+      summary: List tasks
+      operationId: listTasks
+      parameters:
+        - $ref: "#/components/parameters/StatusQuery"
+        - name: due_from
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Inclusive lower bound on due_at (RFC3339)
+        - name: due_to
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Inclusive upper bound on due_at (RFC3339)
+      responses:
+        "200":
+          description: Tasks ordered by due_at
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/Error"
+    post:
+      tags: [Tasks]
+      summary: Create a task
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskRequest"
+            examples:
+              pending:
+                value:
+                  title: Write demo notes
+                  description: Optional
+                  due_at: "2026-08-28T12:00:00Z"
+                  status: pending
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /tasks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    get:
+      tags: [Tasks]
+      summary: Get a task
+      operationId: getTask
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    put:
+      tags: [Tasks]
+      summary: Update a task (partial)
+      operationId: updateTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskRequest"
+            examples:
+              complete:
+                value:
+                  status: completed
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      tags: [Tasks]
+      summary: Delete a task
+      operationId: deleteTask
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /tasks/{id}/reminder-rules:
+    post:
+      tags: [Reminder rules]
+      summary: Create a reminder rule for a task
+      operationId: createReminderRule
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReminderRuleRequest"
+            examples:
+              atDue:
+                summary: One-time at due
+                value:
+                  name: At due
+                  days: 0
+                  trigger_type: at_due
+                  offset_minutes: 0
+              beforeDue:
+                summary: 15 minutes before
+                value:
+                  name: 15m before
+                  days: 0
+                  trigger_type: before_due
+                  offset_minutes: 15
+              everyDay:
+                summary: Recurring every weekday
+                value:
+                  name: Every day
+                  days: 127
+                  trigger_type: at_due
+                  offset_minutes: 0
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderRule"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /reminder-rules:
+    get:
+      tags: [Reminder rules]
+      summary: List reminder rules
+      operationId: listReminderRules
+      parameters:
+        - name: task_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: If omitted, returns all rules
+      responses:
+        "200":
+          description: Rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReminderRule"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /reminder-rules/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    get:
+      tags: [Reminder rules]
+      summary: Get a reminder rule
+      operationId: getReminderRule
+      responses:
+        "200":
+          description: Rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderRule"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    put:
+      tags: [Reminder rules]
+      summary: Update a reminder rule (partial)
+      operationId: updateReminderRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReminderRuleRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderRule"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      tags: [Reminder rules]
+      summary: Delete a reminder rule
+      operationId: deleteReminderRule
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /reminder-rules/{id}/status:
+    patch:
+      tags: [Reminder rules]
+      summary: Activate or deactivate a reminder rule
+      operationId: setReminderRuleStatus
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetActiveRequest"
+            examples:
+              deactivate:
+                value:
+                  is_active: false
+              activate:
+                value:
+                  is_active: true
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderRule"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /audit-logs:
+    get:
+      tags: [Audit]
+      summary: List audit logs
+      operationId: listAuditLogs
+      parameters:
+        - name: task_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: If omitted, returns all logs (newest first)
+      responses:
+        "200":
+          description: Logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /audit-trail:
+    get:
+      tags: [Audit]
+      summary: Alias of GET /audit-logs
+      operationId: listAuditTrail
+      parameters:
+        - name: task_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
+
+  /audit-logs/{id}:
+    get:
+      tags: [Audit]
+      summary: Get one audit log
+      operationId: getAuditLog
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLog"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+components:
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    StatusQuery:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [pending, completed]
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, completed]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateTaskRequest:
+      type: object
+      required: [title, due_at]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, completed]
+          default: pending
+
+    UpdateTaskRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, completed]
+
+    ReminderRule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        days:
+          type: integer
+          minimum: 0
+          maximum: 127
+        trigger_type:
+          type: string
+          enum: [before_due, at_due, after_due]
+        offset_minutes:
+          type: integer
+          minimum: 0
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateReminderRuleRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        days:
+          type: integer
+          minimum: 0
+          maximum: 127
+          default: 0
+        trigger_type:
+          type: string
+          enum: [before_due, at_due, after_due]
+          default: at_due
+        offset_minutes:
+          type: integer
+          minimum: 0
+          default: 0
+
+    UpdateReminderRuleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        days:
+          type: integer
+          minimum: 0
+          maximum: 127
+        trigger_type:
+          type: string
+          enum: [before_due, at_due, after_due]
+        offset_minutes:
+          type: integer
+          minimum: 0
+        is_active:
+          type: boolean
+
+    SetActiveRequest:
+      type: object
+      required: [is_active]
+      properties:
+        is_active:
+          type: boolean
+
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          enum:
+            - task_created
+            - task_updated
+            - task_deleted
+            - rule_created
+            - rule_updated
+            - rule_deleted
+            - rule_activated
+            - rule_deactivated
+            - reminder_triggered
+        rule_id:
+          type: string
+          format: uuid
+          nullable: true
+        task_id:
+          type: string
+          format: uuid
+          nullable: true
+        details:
+          description: JSON object stored as JSONB
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
