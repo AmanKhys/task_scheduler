@@ -61,9 +61,8 @@ function fromLocalInput(value) {
 function formatWhen(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
+  return d.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
 }
-
 function describeDays(days) {
   if (!days) return "one-time";
   return DAY_BITS.filter((d) => days & d.bit)
